@@ -1,0 +1,72 @@
+name: lippen
+# Lippensync mit MuseTalk 1.5 auf CPU. Auftrag und Ergebnis liegen nur verschluesselt
+# als Release-Datei im Repo (AES-256, Schluessel im Secret LIPPEN_SCHLUESSEL).
+on:
+  workflow_dispatch:
+    inputs:
+      auftrag:
+        description: Tag des Releases mit auftrag.enc
+        required: true
+permissions:
+  contents: write
+jobs:
+  lippen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      MUSETALK_COMMIT: 0a89dec45a0192b824e3cf4daf96c239440c5ed8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: requirements-cpu.txt
+      - name: MuseTalk holen und fuer CPU anpassen
+        run: |
+          git clone -q https://github.com/TMElyralab/MuseTalk.git mt
+          cd mt && git checkout -q $MUSETALK_COMMIT
+          sed -i "s/torch.load(path_to_detector)/torch.load(path_to_detector, map_location='cpu')/" musetalk/utils/face_detection/detection/sfd/sfd_detector.py
+      - name: Pakete
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+          pip install -q torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
+          pip install -q -r requirements-cpu.txt
+          pip install -q mmengine==0.10.4
+          pip install -q mmcv==2.0.1 -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.0/index.html
+          pip install -q mmdet==3.1.0
+          pip install -q --no-build-isolation chumpy==0.70 || true
+          pip install -q mmpose==1.1.0
+      - uses: actions/cache@v4
+        id: modelle
+        with:
+          path: mt/models
+          key: musetalk-modelle-v15-1
+      - name: Modelle laden
+        if: steps.modelle.outputs.cache-hit != 'true'
+        working-directory: mt
+        run: bash ../modelle.sh
+      - name: Auftrag holen und entschluesseln
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHLUESSEL: ${{ secrets.LIPPEN_SCHLUESSEL }}
+        run: |
+          gh release download "${{ inputs.auftrag }}" -p auftrag.enc -D /tmp
+          mkdir -p auftrag
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:SCHLUESSEL -in /tmp/auftrag.enc | tar xz -C auftrag
+          ls auftrag | wc -l
+      - name: Lippen rechnen
+        working-directory: mt
+        run: |
+          /usr/bin/time -v python -m scripts.inference --version v15 \
+            --inference_config ../auftrag/aufgaben.yaml --result_dir ../ergebnis \
+            --unet_model_path models/musetalkV15/unet.pth --unet_config models/musetalkV15/musetalk.json \
+            --whisper_dir models/whisper --batch_size 4 2>&1 | grep -v "^\s*$" | tail -60
+          ls -la ../ergebnis/v15/*.mp4
+      - name: Ergebnis verschluesselt ablegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHLUESSEL: ${{ secrets.LIPPEN_SCHLUESSEL }}
+        run: |
+          tar cz -C ergebnis/v15 $(cd ergebnis/v15 && ls *.mp4) | openssl enc -aes-256-cbc -pbkdf2 -pass env:SCHLUESSEL -out ergebnis.enc
+          gh release upload "${{ inputs.auftrag }}" ergebnis.enc --clobber
