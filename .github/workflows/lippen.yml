@@ -58,6 +58,7 @@ jobs:
       - name: Lippen rechnen
         working-directory: mt
         run: |
+          echo "Kerne: $(nproc)"; export OMP_NUM_THREADS=$(nproc) MKL_NUM_THREADS=$(nproc)
           /usr/bin/time -v python -m scripts.inference --version v15 \
             --inference_config ../auftrag/aufgaben.yaml --result_dir ../ergebnis \
             --unet_model_path models/musetalkV15/unet.pth --unet_config models/musetalkV15/musetalk.json \
