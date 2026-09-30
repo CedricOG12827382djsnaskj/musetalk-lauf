@@ -1,5 +1,5 @@
 # Spricht Sätze mit einer geklonten Stimme (Qwen3-TTS Base) und liefert Wortzeiten (Qwen3-ForcedAligner).
-# Eingabe: auftrag/ref.wav, auftrag/ref.txt, auftrag/saetze.json [{"id": "...", "text": "..."}]
+# Eingabe: auftrag/ref.wav (oder auftrag/entwurf.txt mit einer Stimmbeschreibung), auftrag/ref.txt, auftrag/saetze.json [{"id": "...", "text": "..."}]
 # Ausgabe: ergebnis/<id>.wav und ergebnis/<id>.woerter.json [{"wort", "von", "bis"}]
 import json, os, sys, time
 import torch, soundfile as sf
@@ -14,6 +14,16 @@ saetze = json.load(open(f'{A}/saetze.json', encoding='utf-8'))
 ref_text = open(f'{A}/ref.txt', encoding='utf-8').read().strip()
 
 t0 = time.time()
+# Optional: Stimme erst entwerfen (Qwen3-TTS VoiceDesign), wenn statt ref.wav eine Beschreibung in entwurf.txt liegt.
+# Der Entwurf spricht ref.txt und wird danach wie eine normale Referenz geklont; er liegt auch in ergebnis/ref.wav.
+if os.path.exists(f'{A}/entwurf.txt') and not os.path.exists(f'{A}/ref.wav'):
+    beschreibung = open(f'{A}/entwurf.txt', encoding='utf-8').read().strip()
+    vd = Qwen3TTSModel.from_pretrained(os.environ.get('TTS_ENTWURF', 'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign'), device_map='cpu', dtype=torch.float32)
+    wavs, sr = vd.generate_voice_design(text=ref_text, language='German', instruct=beschreibung)
+    sf.write(f'{A}/ref.wav', wavs[0], sr)
+    sf.write(f'{E}/ref.wav', wavs[0], sr)
+    print(f"{time.time() - t0:6.0f} s  Stimme entworfen", flush=True)
+    del vd
 tts = Qwen3TTSModel.from_pretrained(modell, device_map='cpu', dtype=torch.float32)
 prompt = tts.create_voice_clone_prompt(ref_audio=f'{A}/ref.wav', ref_text=ref_text)
 for s in saetze:
