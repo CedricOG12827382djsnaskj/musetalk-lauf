@@ -1,0 +1,47 @@
+name: stimme
+# Sprachausgabe mit Qwen3-TTS (Apache 2.0) auf CPU, Stimme geklont aus einer eigenen, erfundenen Referenz.
+# Auftrag und Ergebnis nur verschluesselt als Release-Datei (Secret LIPPEN_SCHLUESSEL).
+on:
+  workflow_dispatch:
+    inputs:
+      auftrag:
+        description: Tag des Releases mit auftrag.enc
+        required: true
+permissions:
+  contents: write
+jobs:
+  stimme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pakete
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg sox >/dev/null
+          pip install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -q -U qwen-tts soundfile
+          pip install -q -U qwen-asr
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: qwen-tts-modelle-1
+      - name: Auftrag holen und entschluesseln
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHLUESSEL: ${{ secrets.LIPPEN_SCHLUESSEL }}
+        run: |
+          gh release download "${{ inputs.auftrag }}" -p auftrag.enc -D /tmp
+          mkdir -p auftrag
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:SCHLUESSEL -in /tmp/auftrag.enc | tar xz -C auftrag
+      - name: Sprechen und Wortzeiten
+        run: python sprechen.py auftrag ergebnis
+      - name: Ergebnis verschluesselt ablegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHLUESSEL: ${{ secrets.LIPPEN_SCHLUESSEL }}
+        run: |
+          tar cz -C ergebnis . | openssl enc -aes-256-cbc -pbkdf2 -pass env:SCHLUESSEL -out ergebnis.enc
+          gh release upload "${{ inputs.auftrag }}" ergebnis.enc --clobber
