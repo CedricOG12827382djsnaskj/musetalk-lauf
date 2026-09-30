@@ -1,4 +1,5 @@
 name: lippen
+run-name: lippen ${{ inputs.auftrag }}
 # Lippensync mit MuseTalk 1.5 auf CPU. Auftrag und Ergebnis liegen nur verschluesselt
 # als Release-Datei im Repo (AES-256, Schluessel im Secret LIPPEN_SCHLUESSEL).
 on:

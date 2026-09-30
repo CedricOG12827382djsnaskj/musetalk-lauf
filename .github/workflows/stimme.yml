@@ -1,4 +1,5 @@
 name: stimme
+run-name: stimme ${{ inputs.auftrag }}
 # Sprachausgabe mit Qwen3-TTS (Apache 2.0) auf CPU, Stimme geklont aus einer eigenen, erfundenen Referenz.
 # Auftrag und Ergebnis nur verschluesselt als Release-Datei (Secret LIPPEN_SCHLUESSEL).
 on:
