@@ -27,6 +27,7 @@ jobs:
           git clone -q https://github.com/TMElyralab/MuseTalk.git mt
           cd mt && git checkout -q $MUSETALK_COMMIT
           sed -i "s/torch.load(path_to_detector)/torch.load(path_to_detector, map_location='cpu')/" musetalk/utils/face_detection/detection/sfd/sfd_detector.py
+          python ../patch_musetalk.py
       - name: Pakete
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
