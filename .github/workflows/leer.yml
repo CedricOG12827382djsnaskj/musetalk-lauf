@@ -1,0 +1,42 @@
+name: leer
+run-name: leer ${{ inputs.auftrag }}
+# Person aus einem Standbild entfernen (LaMa über simple-lama-inpainting, Apache 2.0), damit eine leere Wand entsteht.
+# Auftrag und Ergebnis nur verschluesselt als Release-Datei (Secret LIPPEN_SCHLUESSEL).
+on:
+  workflow_dispatch:
+    inputs:
+      auftrag:
+        description: Tag des Releases mit auftrag.enc
+        required: true
+permissions:
+  contents: write
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Pakete
+        run: |
+          pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -q simple-lama-inpainting
+      - name: Auftrag holen und entschluesseln
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHLUESSEL: ${{ secrets.LIPPEN_SCHLUESSEL }}
+        run: |
+          gh release download "${{ inputs.auftrag }}" -p auftrag.enc -D /tmp
+          mkdir -p auftrag
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:SCHLUESSEL -in /tmp/auftrag.enc | tar xz -C auftrag
+      - name: Wegretuschieren
+        run: python leer.py auftrag ergebnis
+      - name: Ergebnis verschluesselt ablegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHLUESSEL: ${{ secrets.LIPPEN_SCHLUESSEL }}
+        run: |
+          tar cz -C ergebnis . | openssl enc -aes-256-cbc -pbkdf2 -pass env:SCHLUESSEL -out ergebnis.enc
+          gh release upload "${{ inputs.auftrag }}" ergebnis.enc --clobber
